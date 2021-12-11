@@ -1,6 +1,6 @@
 {
 
-    "name": "oat-sa/extension-tao-itemqti-pci",
+    "name": "openthinklabs/extension-tao-itemqti-pci",
     "description" : "",
     "type" : "tao-extension",
     "authors" : [
