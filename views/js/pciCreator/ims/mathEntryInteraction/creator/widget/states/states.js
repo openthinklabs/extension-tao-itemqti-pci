@@ -19,9 +19,11 @@
 define([
     'taoQtiItem/qtiCreator/widgets/states/factory',
     'taoQtiItem/qtiCreator/widgets/interactions/customInteraction/states/states',
-    'mathEntryInteraction/creator/widget/states/Question'
+    'mathEntryInteraction/creator/widget/states/Question',
+    'mathEntryInteraction/creator/widget/states/Correct',
+    'mathEntryInteraction/creator/widget/states/Map'
 ], function(factory, states){
     'use strict';
 
-    return factory.createBundle(states, arguments, ['answer', 'correct', 'map']);
+    return factory.createBundle(states, arguments);
 });
