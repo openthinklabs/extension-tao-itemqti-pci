@@ -339,7 +339,7 @@ define([
                                 // for some weird reasons some browsers have quotes around the file type
                                 const checkType = file.type.replace(/("|')/g, '');
                                 return (
-                                    _.contains(_fileTypeFilters, checkType) ||
+                                    _.includes(_fileTypeFilters, checkType) ||
                                     (checkType === '' && _fileExtFilter.test(file.name))
                                 );
                             });
@@ -393,15 +393,12 @@ define([
                                         done(true);
                                     }
                                 } else {
-                                    if (_.isArray(r.package)) {
-                                        _.each(r.package, function (report) {
-                                            if (_.isArray(report.messages)) {
-                                                _.forEach(report.messages, function (msg) {
-                                                    feedback().error(msg.message);
-                                                });
-                                            }
+                                    if (_.isArray(r.messages)) {
+                                        _.forEach(r.messages, function (report) {
+                                            feedback().error(report.message);
                                         });
                                     }
+
                                     done(false);
                                 }
                             },

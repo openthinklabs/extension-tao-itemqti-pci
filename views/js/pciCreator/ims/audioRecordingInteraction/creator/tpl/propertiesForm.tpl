@@ -24,6 +24,17 @@
 
 <div class="panel">
     <label>
+        <input name="hideStopButton" type="checkbox" {{#if hideStopButton}}checked="checked"{{/if}}/>
+        <span class="icon-checkbox"></span> {{__ "Hide stop button"}}
+    </label>
+    <span class="icon-help tooltipstered" data-tooltip="~ .tooltip-content" data-tooltip-theme="info"></span>
+    <span class="tooltip-content">
+        {{__ "Hide the stop button from test takers."}}
+    </span>
+</div>
+
+<div class="panel" data-role="autoStartOption">
+    <label>
         <input name="autoStart" type="checkbox" {{#if autoStart}}checked="checked"{{/if}}/>
         <span class="icon-checkbox"></span> {{__ "Auto start recording"}}
     </label>
@@ -33,12 +44,40 @@
     </span>
 </div>
 
-<div data-role="delayOptions" {{#unless autoStart}}style="display:none"{{/unless}}>
-    <div class="panel">
-        <label for="delay-minutes" class="spinner">{{__ "Min:"}}</label>
-        <input id="delay-minutes" name="delayMinutes" value="{{delayMinutes}}" data-increment="1" data-min="0" data-max="20" type="text" />
-        <label for="delay-seconds" class="spinner">{{__ "Sec:"}}</label>
-        <input id="delay-seconds" name="delaySeconds" value="{{delaySeconds}}" data-increment="15" data-min="0" data-max="45" type="text" />
+<div class="panel subpanel" data-role="autoStartSubOptions" {{#unless autoStart}}style="display:none"{{/unless}}>
+    <div data-role="delayOptions">
+        <div class="panel">
+            <label for="delay-minutes" class="spinner">{{__ "Min:"}}</label>
+            <input id="delay-minutes" name="delayMinutes" value="{{delayMinutes}}" data-increment="1" data-min="0" data-max="20" type="text" />
+            <label for="delay-seconds" class="spinner">{{__ "Sec:"}}</label>
+            <input id="delay-seconds" name="delaySeconds" value="{{delaySeconds}}" data-increment="15" data-min="0" data-max="45" type="text" />
+        </div>
+    </div>
+
+    <div data-role="hideRecordOption">
+        <div class="panel">
+            <label>
+                <input name="hideRecordButton" type="checkbox" {{#if hideRecordButton}}checked="checked"{{/if}}/>
+                <span class="icon-checkbox"></span> {{__ "Hide record button"}}
+            </label>
+            <span class="icon-help tooltipstered" data-tooltip="~ .tooltip-content" data-tooltip-theme="info"></span>
+            <span class="tooltip-content">
+                {{__ "Hide the record button from test takers."}}
+            </span>
+        </div>
+    </div>
+
+    <div data-role="sequentialOption">
+        <div class="panel">
+            <label>
+                <input name="sequential" type="checkbox" {{#if sequential}}checked="checked"{{/if}}/>
+                <span class="icon-checkbox"></span> {{__ "Sequential"}}
+            </label>
+            <span class="icon-help tooltipstered" data-tooltip="~ .tooltip-content" data-tooltip-theme="info"></span>
+            <span class="tooltip-content">
+                {{__ "Indicates that the audio forms part of a sequence with other sequential interactions. The advancing of the sequence is handled by the delivery engine. Delays are also respected."}}
+            </span>
+        </div>
     </div>
 </div>
 
@@ -54,6 +93,17 @@
 </div>
 
 <div class="panel">
+    <label>
+        <input name="playSound" type="checkbox" {{#if playSound}}checked="checked"{{/if}}/>
+        <span class="icon-checkbox"></span> {{__ "Play sound"}}
+    </label>
+    <span class="icon-help tooltipstered" data-tooltip="~ .tooltip-content" data-tooltip-theme="info"></span>
+    <span class="tooltip-content">
+        {{__ "Play a sound at the start and end of recording."}}
+    </span>
+</div>
+
+<div class="panel">
     <label for="max-records" class="spinner">{{__ "Max attempts:"}}</label>
     <input id="max-records" name="maxRecords" value="{{maxRecords}}" class="large" data-increment="1" data-min="0" type="text" />
     <span class="icon-help tooltipstered" data-tooltip="~ .tooltip-content" data-tooltip-theme="info"></span>
@@ -64,10 +114,10 @@
 
 <div class="panel">
     <label for="max-recording-time" class="spinner">{{__ "Time limit:"}}</label>
-    <input id="max-recording-time" name="maxRecordingTime" value="{{maxRecordingTime}}" class="large" data-increment="10" data-min="10" data-max="{{maximumRecordingTimeLimit}}" type="text" />
+    <input id="max-recording-time" name="maxRecordingTime" value="{{maxRecordingTime}}" class="large" data-increment="5" data-min="5" data-max="{{maximumRecordingTimeLimit}}" type="text" />
     <span class="icon-help tooltipstered" data-tooltip="~ .tooltip-content" data-tooltip-theme="info"></span>
     <span class="tooltip-content">
-        {{__ "In seconds. Maximum recording time allowed (cannot be less than 10seconds). Recording will automatically stop once reached."}}
+        {{__ "In seconds. Maximum recording time allowed (cannot be less than 5 seconds). Recording will automatically stop once reached."}}
     </span>
 </div>
 

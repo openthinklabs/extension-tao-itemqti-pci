@@ -8,7 +8,7 @@
     "label": "Math entry",
     "short": "Math entry",
     "description": "Allow test taker to type math formulas",
-    "version": "2.0.0",
+    "version": "2.6.0",
     "author": "Christophe Noël",
     "email": "christophe@taotesting.com",
     "tags": [
@@ -37,6 +37,9 @@
         "src": [
             "./runtime/mathEntryInteraction.js",
             "./runtime/mathquill/mathquill.js",
+            "./runtime/mathml-to-latex/mathml-to-latex.js",
+            "./runtime/helper/mathInPrompt.js",
+            "./runtime/helper/ambiguousSymbols.js",
             "./runtime/polyfill/es6-collections.js"
         ],
         "stylesheets" : [
@@ -51,15 +54,20 @@
             "./creator/tpl/markup.tpl",
             "./creator/tpl/propertiesForm.tpl",
             "./creator/tpl/addGapBtn.tpl",
-            "./creator/tpl/addAnswerOption.tpl",
+            "./creator/tpl/addAlternativeBtn.tpl",
+            "./creator/tpl/alternativeForm.tpl",
             "./creator/tpl/answerForm.tpl",
+            "./creator/tpl/responseForm.tpl",
+            "./creator/tpl/scoreForm.tpl",
             "./creator/widget/Widget.js",
             "./creator/widget/states/Question.js",
             "./creator/widget/states/Map.js",
             "./creator/widget/states/Correct.js",
+            "./creator/widget/states/states.js",
+            "./runtime/helper/mathInPrompt.js",
+            "./runtime/helper/ambiguousSymbols.js",
             "./runtime/css/mathEntryInteraction.css",
-            "./runtime/mathquill/mathquill.css",
-            "./creator/widget/states/states.js"
+            "./runtime/mathquill/mathquill.css"
         ]
     }
 }

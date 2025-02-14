@@ -1091,7 +1091,7 @@ function getInterface(v) {
       var ctrlr = this.__controller.notify(), cursor = ctrlr.cursor;
       if (/^\\[a-z]+$/i.test(cmd) && !cursor.isTooDeep()) {
         cmd = cmd.slice(1);
-        var klass = LatexCmds[cmd];
+        var klass = LatexCmds[cmd]|| Environments[cmd];
         if (klass) {
           cmd = klass(cmd);
           if (cursor.selection) cmd.replaces(cursor.replaceSelection());
@@ -1489,12 +1489,25 @@ var saneKeyboardEvents = (function() {
     modifiers.push(key);
     return modifiers.join('-');
   }
-
+  function isVisibleKey(evt) {
+    var which = evt.which || evt.keyCode;
+    var keyVal = KEY_VALUES[which];
+    return !(evt.ctrlKey || evt.originalEvent && evt.originalEvent.metaKey || evt.altKey || evt.shiftKey || keyVal);
+  }
+  function isIpadOS() {
+    return navigator.maxTouchPoints &&
+      navigator.maxTouchPoints > 2 &&
+      /MacIntel/.test(navigator.platform);
+  }
   // create a keyboard events shim that calls callbacks at useful times
   // and exports useful public methods
   return function saneKeyboardEvents(el, handlers) {
     var keydown = null;
     var keypress = null;
+    var keyup = null;
+    var input = null;
+    var textWasInserted = false;
+    var is_iPad = isIpadOS();
 
     var textarea = jQuery(el);
     var target = jQuery(handlers.container || textarea);
@@ -1520,8 +1533,6 @@ var saneKeyboardEvents = (function() {
         checker(e);
       });
     }
-    target.bind('keydown keypress input keyup focusout paste', function(e) { checkTextarea(e); });
-
 
     // -*- public methods -*- //
     function select(text) {
@@ -1560,6 +1571,9 @@ var saneKeyboardEvents = (function() {
 
       keydown = e;
       keypress = null;
+      input = null;
+      keyup = null;
+      textWasInserted = false;
 
       if (shouldBeSelected) checkTextareaOnce(function(e) {
         if (!(e && e.type === 'focusout') && textarea[0].select) {
@@ -1590,8 +1604,10 @@ var saneKeyboardEvents = (function() {
 
       // Handle case of no keypress event being sent
       if (!!keydown && !keypress) checkTextareaFor(typedText);
+      keyup = e;
+      checkTextareaFor(typedText);
     }
-    function typedText() {
+    function typedText(e) {
       // If there is a selection, the contents of the textarea couldn't
       // possibly have just been typed in.
       // This happens in browsers like Firefox and Opera that fire
@@ -1615,6 +1631,14 @@ var saneKeyboardEvents = (function() {
       if (text.length === 1) {
         textarea.val('');
         handlers.typedText(text);
+        textWasInserted = true;
+      } else if (text.length === 0 && is_iPad && !input && keydown && keyup && !textWasInserted && isVisibleKey(keydown)) {
+        // issue with iPad and Japanese keyboard
+        // only first symbol put in textare, 
+        // rest ignored and no text in textarea, no input event
+        // will be used keydown.key
+        handlers.typedText(keydown.key);
+        textWasInserted = true;
       } // in Firefox, keys that don't type text, just clear seln, fire keypress
       // https://github.com/mathquill/mathquill/issues/293#issuecomment-40997668
       else if (text && textarea[0].select) textarea[0].select(); // re-select if that's why we're here
@@ -1658,6 +1682,10 @@ var saneKeyboardEvents = (function() {
       cut: function() { checkTextareaOnce(function() { handlers.cut(); }); },
       copy: function() { checkTextareaOnce(function() { handlers.copy(); }); },
       paste: onPaste
+    });
+    // -*- attach event handlers -*- //
+    textarea.bind({
+      input: function(e) { input = e; },
     });
 
     // -*- export public methods -*- //
@@ -3396,6 +3424,99 @@ API.TextField = function(APIClasses) {
     };
   });
 };
+/****************************************
+ * Input box to type backslash commands
+ ***************************************/
+
+var LatexCommandInput =
+CharCmds['\\'] = P(MathCommand, function(_, super_) {
+  _.ctrlSeq = '\\';
+  _.replaces = function(replacedFragment) {
+    this._replacedFragment = replacedFragment.disown();
+    this.isEmpty = function() { return false; };
+  };
+  _.htmlTemplate = '<span class="mq-latex-command-input mq-non-leaf">\\<span>&0</span></span>';
+  _.textTemplate = ['\\'];
+  _.createBlocks = function() {
+    super_.createBlocks.call(this);
+    this.ends[L].focus = function() {
+      this.parent.jQ.addClass('mq-hasCursor');
+      if (this.isEmpty())
+        this.parent.jQ.removeClass('mq-empty');
+
+      return this;
+    };
+    this.ends[L].blur = function() {
+      this.parent.jQ.removeClass('mq-hasCursor');
+      if (this.isEmpty())
+        this.parent.jQ.addClass('mq-empty');
+
+      return this;
+    };
+    this.ends[L].write = function(cursor, ch) {
+      cursor.show().deleteSelection();
+
+      if (ch.match(/[a-z]/i)) VanillaSymbol(ch).createLeftOf(cursor);
+      else {
+        this.parent.renderCommand(cursor);
+        if (ch !== '\\' || !this.isEmpty()) cursor.parent.write(cursor, ch);
+      }
+    };
+    this.ends[L].keystroke = function(key, e, ctrlr) {
+      if (key === 'Tab' || key === 'Enter' || key === 'Spacebar') {
+        this.parent.renderCommand(ctrlr.cursor);
+        e.preventDefault();
+        return;
+      }
+      return super_.keystroke.apply(this, arguments);
+    };
+  };
+  _.createLeftOf = function(cursor) {
+    super_.createLeftOf.call(this, cursor);
+
+    if (this._replacedFragment) {
+      var el = this.jQ[0];
+      this.jQ =
+        this._replacedFragment.jQ.addClass('mq-blur').bind(
+          'mousedown mousemove', //FIXME: is monkey-patching the mousedown and mousemove handlers the right way to do this?
+          function(e) {
+            $(e.target = el).trigger(e);
+            return false;
+          }
+        ).insertBefore(this.jQ).add(this.jQ);
+    }
+  };
+  _.latex = function() {
+    return '\\' + this.ends[L].latex() + ' ';
+  };
+  _.renderCommand = function(cursor) {
+    this.jQ = this.jQ.last();
+    this.remove();
+    if (this[R]) {
+      cursor.insLeftOf(this[R]);
+    } else {
+      cursor.insAtRightEnd(this.parent);
+    }
+
+    var latex = this.ends[L].latex();
+    if (!latex) latex = ' ';
+    var cmd = LatexCmds[latex]|| Environments[latex];
+    if (cmd) {
+      cmd = cmd(latex);
+      if (this._replacedFragment) cmd.replaces(this._replacedFragment);
+      cmd.createLeftOf(cursor);
+    }
+    else {
+      cmd = TextBlock();
+      cmd.replaces(latex);
+      cmd.createLeftOf(cursor);
+      cursor.insRightOf(cmd);
+      if (this._replacedFragment)
+        this._replacedFragment.remove();
+    }
+  };
+});
+
 /************************************
  * Symbols for Advanced Mathematics
  ***********************************/
@@ -4722,6 +4843,54 @@ LatexCmds.integral = P(SummationNotation, function(_, super_) {
   // FIXME: refactor rather than overriding
   _.createLeftOf = MathCommand.p.createLeftOf;
 });
+LatexCmds.lim =
+LatexCmds.limit = P(MathCommand, function(_, super_) {
+  _.init = function() {
+    var htmlTemplate =
+      '<span class="mq-limit mq-non-leaf">'
+    +   '<span class="mq-lim">lim</span>'
+    +   '<span class="mq-approaches"><span>&0</span></span>'
+    + '</span>'
+    ;
+    Symbol.prototype.init.call(this, '\\lim ', htmlTemplate);
+  };
+  _.latex = function() {
+    function simplify(latex) {
+      return latex.length === 1 ? latex : '{' + (latex || ' ') + '}';
+    }
+    return this.ctrlSeq + '_' + simplify(this.ends[L].latex());
+  };
+  _.parser = function() {
+    var string = Parser.string;
+    var optWhitespace = Parser.optWhitespace;
+    var succeed = Parser.succeed;
+    var block = latexMathParser.block;
+
+    var self = this, child = MathBlock();
+    self.blocks = [ child ];
+    child.adopt(self, 0, 0);
+
+    return optWhitespace.then(string('_')).then(function(supOrSub) {
+      return block.then(function(block) {
+        block.children().adopt(child, child.ends[R], 0);
+        return succeed(self);
+      });
+    }).many().result(self);
+  };
+  _.finalizeTree = function() {
+    this.downInto = this.ends[L];
+    this.ends[L].upOutOf = function(cursor) {
+      // this is basically gonna be insRightOfMeUnlessAtEnd,
+      // by analogy with insLeftOfMeUnlessAtEnd
+      var cmd = this.parent, ancestorCmd = cursor;
+      do {
+        if (ancestorCmd[L]) return cursor.insRightOf(cmd);
+        ancestorCmd = ancestorCmd.parent.parent;
+      } while (ancestorCmd !== cmd);
+      cursor.insLeftOf(cmd);
+    };
+  };
+});
 
 var Fraction =
 LatexCmds.frac =
@@ -5160,99 +5329,412 @@ var Embed = LatexCmds.embed = P(Symbol, function(_, super_) {
     ;
   };
 });
-/****************************************
- * Input box to type backslash commands
- ***************************************/
 
-var LatexCommandInput =
-CharCmds['\\'] = P(MathCommand, function(_, super_) {
-  _.ctrlSeq = '\\';
-  _.replaces = function(replacedFragment) {
-    this._replacedFragment = replacedFragment.disown();
-    this.isEmpty = function() { return false; };
+// LaTeX environments
+// Environments are delimited by an opening \begin{} and a closing
+// \end{}. Everything inside those tags will be formatted in a
+// special manner depending on the environment type.
+var Environments = {};
+
+LatexCmds.begin = P(MathCommand, function(_, super_) {
+  _.parser = function() {
+    var string = Parser.string;
+    var regex = Parser.regex;
+    return string('{')
+      .then(regex(/^[a-z]+/i))
+      .skip(string('}'))
+      .then(function (env) {
+          return (Environments[env] ?
+            Environments[env]().parser() :
+            Parser.fail('unknown environment type: '+env)
+          ).skip(string('\\end{'+env+'}'));
+      })
+    ;
   };
-  _.htmlTemplate = '<span class="mq-latex-command-input mq-non-leaf">\\<span>&0</span></span>';
-  _.textTemplate = ['\\'];
-  _.createBlocks = function() {
-    super_.createBlocks.call(this);
-    this.ends[L].focus = function() {
-      this.parent.jQ.addClass('mq-hasCursor');
-      if (this.isEmpty())
-        this.parent.jQ.removeClass('mq-empty');
+});
 
-      return this;
-    };
-    this.ends[L].blur = function() {
-      this.parent.jQ.removeClass('mq-hasCursor');
-      if (this.isEmpty())
-        this.parent.jQ.addClass('mq-empty');
-
-      return this;
-    };
-    this.ends[L].write = function(cursor, ch) {
-      cursor.show().deleteSelection();
-
-      if (ch.match(/[a-z]/i)) VanillaSymbol(ch).createLeftOf(cursor);
-      else {
-        this.parent.renderCommand(cursor);
-        if (ch !== '\\' || !this.isEmpty()) cursor.parent.write(cursor, ch);
-      }
-    };
-    this.ends[L].keystroke = function(key, e, ctrlr) {
-      if (key === 'Tab' || key === 'Enter' || key === 'Spacebar') {
-        this.parent.renderCommand(ctrlr.cursor);
-        e.preventDefault();
-        return;
-      }
-      return super_.keystroke.apply(this, arguments);
-    };
+var Environment = P(MathCommand, function(_, super_) {
+  _.template = [['\\begin{', '}'], ['\\end{', '}']];
+  _.wrappers = function () {
+    return [
+      _.template[0].join(this.environment),
+      _.template[1].join(this.environment)
+    ];
   };
-  _.createLeftOf = function(cursor) {
-    super_.createLeftOf.call(this, cursor);
+});
 
-    if (this._replacedFragment) {
-      var el = this.jQ[0];
-      this.jQ =
-        this._replacedFragment.jQ.addClass('mq-blur').bind(
-          'mousedown mousemove', //FIXME: is monkey-patching the mousedown and mousemove handlers the right way to do this?
-          function(e) {
-            $(e.target = el).trigger(e);
-            return false;
-          }
-        ).insertBefore(this.jQ).add(this.jQ);
+var Matrix =
+Environments.matrix = P(Environment, function(_, super_) {
+
+  var delimiters = {
+    column: '&',
+    row: '\\\\'
+  };
+  _.parentheses = {
+    left: null,
+    right: null
+  };
+  _.environment = 'matrix';
+
+  _.reflow = function() {
+    var blockjQ = this.jQ.children('table');
+
+    var height = blockjQ.outerHeight()/+blockjQ.css('fontSize').slice(0,-2);
+
+    var parens = this.jQ.children('.mq-paren');
+    if (parens.length) {
+      scale(parens, min(1 + .2*(height - 1), 1.2), 1.05*height);
     }
   };
   _.latex = function() {
-    return '\\' + this.ends[L].latex() + ' ';
+    var latex = '';
+    var row;
+
+    this.eachChild(function (cell) {
+      if (typeof row !== 'undefined') {
+        latex += (row !== cell.row) ?
+          delimiters.row :
+          delimiters.column;
+      }
+      row = cell.row;
+      latex += cell.latex();
+    });
+
+    return this.wrappers().join(latex);
   };
-  _.renderCommand = function(cursor) {
-    this.jQ = this.jQ.last();
-    this.remove();
-    if (this[R]) {
-      cursor.insLeftOf(this[R]);
-    } else {
-      cursor.insAtRightEnd(this.parent);
+  _.html = function() {
+    var cells = [], trs = '', i=0, row;
+
+    function parenHtml(paren) {
+      return (paren) ?
+          '<span class="mq-scaled mq-paren">'
+        +   paren
+        + '</span>' : '';
     }
 
-    var latex = this.ends[L].latex();
-    if (!latex) latex = ' ';
-    var cmd = LatexCmds[latex];
-    if (cmd) {
-      cmd = cmd(latex);
-      if (this._replacedFragment) cmd.replaces(this._replacedFragment);
-      cmd.createLeftOf(cursor);
+    // Build <tr><td>.. structure from cells
+    this.eachChild(function (cell) {
+      if (row !== cell.row) {
+        row = cell.row;
+        trs += '<tr>$tds</tr>';
+        cells[row] = [];
+      }
+      cells[row].push('<td>&'+(i++)+'</td>');
+    });
+
+    this.htmlTemplate =
+        '<span class="mq-matrix mq-non-leaf">'
+      +   parenHtml(this.parentheses.left)
+      +   '<table class="mq-non-leaf">'
+      +     trs.replace(/\$tds/g, function () {
+              return cells.shift().join('');
+            })
+      +   '</table>'
+      +   parenHtml(this.parentheses.right)
+      + '</span>'
+    ;
+
+    return super_.html.call(this);
+  };
+  // Create default 4-cell matrix
+  _.createBlocks = function() {
+    this.blocks = [
+      MatrixCell(0, this),
+      MatrixCell(0, this),
+      MatrixCell(1, this),
+      MatrixCell(1, this)
+    ];
+  };
+  _.parser = function() {
+    var self = this;
+    var optWhitespace = Parser.optWhitespace;
+    var string = Parser.string;
+
+    return optWhitespace
+    .then(string(delimiters.column)
+      .or(string(delimiters.row))
+      .or(latexMathParser.block))
+    .many()
+    .skip(optWhitespace)
+    .then(function(items) {
+      var blocks = [];
+      var row = 0;
+      self.blocks = [];
+
+      function addCell() {
+        self.blocks.push(MatrixCell(row, self, blocks));
+        blocks = [];
+      }
+
+      for (var i=0; i<items.length; i+=1) {
+        if (items[i] instanceof MathBlock) {
+          blocks.push(items[i]);
+        } else {
+          addCell();
+          if (items[i] === delimiters.row) row+=1;
+        }
+      }
+      addCell();
+      self.autocorrect();
+      return Parser.succeed(self);
+    });
+  };
+  // Relink all the cells after parsing
+  _.finalizeTree = function() {
+    var table = this.jQ.find('table');
+    table.toggleClass('mq-rows-1', table.find('tr').length === 1);
+    this.relink();
+  };
+  // Enter the matrix at the top or bottom row if updown is configured.
+  _.getEntryPoint = function(dir, cursor, updown) {
+    if (updown === 'up') {
+      if (dir === L) {
+        return this.blocks[this.rowSize - 1];
+      } else {
+        return this.blocks[0];
+      }
+    } else { // updown === 'down'
+      if (dir === L) {
+        return this.blocks[this.blocks.length - 1];
+      } else {
+        return this.blocks[this.blocks.length - this.rowSize];
+      }
     }
-    else {
-      cmd = TextBlock();
-      cmd.replaces(latex);
-      cmd.createLeftOf(cursor);
-      cursor.insRightOf(cmd);
-      if (this._replacedFragment)
-        this._replacedFragment.remove();
+  };
+  // Exit the matrix at the first and last columns if updown is configured.
+  _.atExitPoint = function(dir, cursor) {
+      // Which block are we in?
+      var i = this.blocks.indexOf(cursor.parent);
+      if (dir === L) {
+        // If we're on the left edge and moving left, we should exit.
+        return i % this.rowSize === 0;
+      } else {
+        // If we're on the right edge and moving right, we should exit.
+        return (i + 1) % this.rowSize === 0;
+      }
+  };
+  _.moveTowards = function(dir, cursor, updown) {
+    var entryPoint = updown && this.getEntryPoint(dir, cursor, updown);
+    cursor.insAtDirEnd(-dir, entryPoint || this.ends[-dir]);
+  };
+
+  // Set up directional pointers between cells
+  _.relink = function() {
+    var blocks = this.blocks;
+    var rows = [];
+    var row, column, cell;
+
+    // The row size will be used by other functions down the track.
+    // Begin by assuming we're a one-row matrix, and we'll overwrite this if we find another row.
+    this.rowSize = blocks.length;
+
+    // Use a for loop rather than eachChild
+    // as we're still making sure children()
+    // is set up properly
+    for (var i=0; i<blocks.length; i+=1) {
+      cell = blocks[i];
+      if (row !== cell.row) {
+        if (cell.row === 1) {
+          // We've just finished iterating the first row.
+          this.rowSize = column;
+        }
+        row = cell.row;
+        rows[row] = [];
+        column = 0;
+      }
+      rows[row][column] = cell;
+
+      // Set up horizontal linkage
+      cell[R] = blocks[i+1];
+      cell[L] = blocks[i-1];
+
+      // Set up vertical linkage
+      if (rows[row-1] && rows[row-1][column]) {
+        cell.upOutOf = rows[row-1][column];
+        rows[row-1][column].downOutOf = cell;
+      }
+
+      column+=1;
+    }
+
+    // set start and end blocks of matrix
+    this.ends[L] = blocks[0];
+    this.ends[R] = blocks[blocks.length-1];
+  };
+  // Ensure consistent row lengths
+  _.autocorrect = function(rows) {
+    var lengths = [], rows = [];
+    var blocks = this.blocks;
+    var maxLength, shortfall, position, row, i;
+
+    for (i=0; i<blocks.length; i+=1) {
+      row = blocks[i].row;
+      rows[row] = rows[row] || [];
+      rows[row].push(blocks[i]);
+      lengths[row] = rows[row].length;
+    }
+
+    maxLength = Math.max.apply(null, lengths);
+    if (maxLength !== Math.min.apply(null, lengths)) {
+      // Pad shorter rows to correct length
+      for (i=0; i<rows.length; i+=1) {
+        shortfall = maxLength - rows[i].length;
+        while (shortfall) {
+          position = maxLength*i + rows[i].length;
+          blocks.splice(position, 0, MatrixCell(i, this));
+          shortfall-=1;
+        }
+      }
+      this.relink();
+    }
+  };
+  // Deleting a cell will also delete the current row and
+  // column if they are empty, and relink the matrix.
+  _.deleteCell = function(currentCell) {
+    var rows = [], columns = [], myRow = [], myColumn = [];
+    var blocks = this.blocks, row, column;
+
+    // Create arrays for cells in the current row / column
+    this.eachChild(function (cell) {
+      if (row !== cell.row) {
+        row = cell.row;
+        rows[row] = [];
+        column = 0;
+      }
+      columns[column] = columns[column] || [];
+      columns[column].push(cell);
+      rows[row].push(cell);
+
+      if (cell === currentCell) {
+        myRow = rows[row];
+        myColumn = columns[column];
+      }
+
+      column+=1;
+    });
+
+    function isEmpty(cells) {
+      var empties = [];
+      for (var i=0; i<cells.length; i+=1) {
+        if (cells[i].isEmpty()) empties.push(cells[i]);
+      }
+      return empties.length === cells.length;
+    }
+
+    function remove(cells) {
+      for (var i=0; i<cells.length; i+=1) {
+        if (blocks.indexOf(cells[i]) > -1) {
+          cells[i].remove();
+          blocks.splice(blocks.indexOf(cells[i]), 1);
+        }
+      }
+    }
+
+    if (isEmpty(myRow) && myColumn.length > 1) {
+      row = rows.indexOf(myRow);
+      // Decrease all following row numbers
+      this.eachChild(function (cell) {
+        if (cell.row > row) cell.row-=1;
+      });
+      // Dispose of cells and remove <tr>
+      remove(myRow);
+      this.jQ.find('tr').eq(row).remove();
+    }
+    if (isEmpty(myColumn) && myRow.length > 1) {
+      remove(myColumn);
+    }
+    this.finalizeTree();
+  };
+  _.backspace = function(cell, dir, cursor, finalDeleteCallback) {
+    var dirwards = cell[dir];
+    if (cell.isEmpty()) {
+      this.deleteCell(cell);
+      while (dirwards &&
+        dirwards[dir] &&
+        this.blocks.indexOf(dirwards) === -1) {
+          dirwards = dirwards[dir];
+      }
+      if (dirwards) {
+        cursor.insAtDirEnd(-dir, dirwards);
+      }
+      if (this.blocks.length === 1 && this.blocks[0].isEmpty()) {
+        finalDeleteCallback();
+        this.finalizeTree();
+      }
+      this.bubble('edited');
     }
   };
 });
 
+Environments.pmatrix = P(Matrix, function(_, super_) {
+  _.environment = 'pmatrix';
+  _.parentheses = {
+    left: '(',
+    right: ')'
+  };
+});
+
+Environments.bmatrix = P(Matrix, function(_, super_) {
+  _.environment = 'bmatrix';
+  _.parentheses = {
+    left: '[',
+    right: ']'
+  };
+});
+
+Environments.Bmatrix = P(Matrix, function(_, super_) {
+  _.environment = 'Bmatrix';
+  _.parentheses = {
+    left: '{',
+    right: '}'
+  };
+});
+
+Environments.vmatrix = P(Matrix, function(_, super_) {
+  _.environment = 'vmatrix';
+  _.parentheses = {
+    left: '|',
+    right: '|'
+  };
+});
+
+Environments.Vmatrix = P(Matrix, function(_, super_) {
+  _.environment = 'Vmatrix';
+  _.parentheses = {
+    left: '&#8214;',
+    right: '&#8214;'
+  };
+});
+
+// Replacement for mathblocks inside matrix cells
+// Adds matrix-specific deleteOutOf command
+var MatrixCell = P(MathBlock, function(_, super_) {
+  _.init = function(row, parent, replaces) {
+    super_.init.call(this);
+    this.row = row;
+    if (parent) {
+      this.adopt(parent, parent.ends[R], 0);
+    }
+    if (replaces) {
+      for (var i=0; i<replaces.length; i++) {
+        replaces[i].children().adopt(this, this.ends[R], 0);
+      }
+    }
+  };
+  _.deleteOutOf = function(dir, cursor) {
+    var self = this, args = arguments;
+    this.parent.backspace(this, dir, cursor, function () {
+      // called when last cell gets deleted
+      return super_.deleteOutOf.apply(self, args);
+    });
+  };
+  _.moveOutOf = function(dir, cursor, updown) {
+    var atExitPoint = updown && this.parent.atExitPoint(dir, cursor);
+    // Step out of the matrix if we've moved past an edge column
+    if (!atExitPoint && this[dir]) cursor.insAtDirEnd(-dir, this[dir]);
+    else cursor.insDirOf(dir, this.parent);
+  };
+});
 var MQ1 = getInterface(1);
 for (var key in MQ1) (function(key, val) {
   if (typeof val === 'function') {
@@ -5263,7 +5745,7 @@ for (var key in MQ1) (function(key, val) {
     MathQuill[key].prototype = val.prototype;
   }
   else MathQuill[key] = val;
-}(key, MQ1[key]));
+}(key, MQ1[key]));    
     return MathQuill;
 
 });

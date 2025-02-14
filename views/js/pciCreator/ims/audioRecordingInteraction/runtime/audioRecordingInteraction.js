@@ -13,8 +13,9 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
- * Copyright (c) 2017-2022 (original work) Open Assessment Technologies SA;
+ * Copyright (c) 2017-2023 (original work) Open Assessment Technologies SA;
  */
+/* eslint-disable func-names */
 define([
     'qtiCustomInteractionContext',
     'taoQtiItem/portableLib/jquery_2_1_1',
@@ -27,6 +28,7 @@ define([
     'text!audioRecordingInteraction/runtime/img/record.svg',
     'text!audioRecordingInteraction/runtime/img/reset.svg',
     'text!audioRecordingInteraction/runtime/img/stop.svg',
+    'text!audioRecordingInteraction/runtime/img/delete.svg',
     'css!audioRecordingInteraction/runtime/css/audioRecordingInteraction'
 ], function (
     qtiCustomInteractionContext,
@@ -39,7 +41,8 @@ define([
     playIcon,
     recordIcon,
     resetIcon,
-    stopIcon
+    stopIcon,
+    deleteIcon
 ) {
     'use strict';
 
@@ -53,8 +56,10 @@ define([
      * @returns {boolean}
      */
     function toBoolean(value, defaultValue) {
-        if (typeof value === 'undefined' || value === '') {
+        if (typeof value === 'undefined') {
             return defaultValue;
+        } else if (value === '') {
+            return false;
         } else {
             return value === true || value === 'true';
         }
@@ -82,7 +87,7 @@ define([
      *
      * @returns {Object} audioRecordingInteraction
      */
-    audioRecordingInteractionFactory = function () {
+    audioRecordingInteractionFactory = function (dispatchInteractiontraceEvent) {
         return {
             _filePrefix: 'audioRecording',
             _recording: null,
@@ -166,6 +171,10 @@ define([
                     promises.push(self.recorder.destroy());
                 }
 
+                if (self.beepPlayer) {
+                    promises.push(self.beepPlayer.destroy());
+                }
+
                 promises.push(self.resetResponse());
 
                 self._cleanDelayCallback();
@@ -175,6 +184,7 @@ define([
                     self.progressBar = null;
                     self.player = null;
                     self.recorder = null;
+                    self.beepPlayer = null;
                 });
             },
 
@@ -264,7 +274,9 @@ define([
              */
             inQtiCreator: function inQtiCreator() {
                 if (typeof this._inQtiCreator === 'undefined' && this.$container) {
-                    this._inQtiCreator = this.$container.hasClass('tao-qti-creator-context');
+                    this._inQtiCreator =
+                        this.$container.hasClass('tao-qti-creator-context') ||
+                        this.$container.find('.tao-qti-creator-context').length > 0;
                 }
                 return this._inQtiCreator;
             },
@@ -306,17 +318,63 @@ define([
                 this.initProgressBar();
                 this.initMeter();
                 this.initControls();
+                this.initBeepPlayer();
                 this.updateResetCount();
                 this.initRecording();
+                this.updateAriaLabel();
+
+                if (this.config.enableDomEvents) {
+                    // incoming events
+
+                    this.$container.get(0).addEventListener('config-change', ({ detail: newConfig }) => {
+                        if (this.config.isDisabled !== newConfig.isDisabled) {
+                            this.config.isDisabled = newConfig.isDisabled;
+                            this.updateControls();
+                        } else {
+                            this.render(newConfig);
+                        }
+                    });
+
+                    // outgoing events
+
+                    const dispatchRecorderStop = (durationMs = 0) => {
+                        this.$container.get(0).dispatchEvent(
+                            new CustomEvent('recorder-stop', {
+                                recordsAttempts: this._recordsAttempts
+                            })
+                        );
+                        dispatchInteractiontraceEvent({
+                            domEventType: 'end',
+                            duration: durationMs
+                        });
+                    };
+                    if (this.beepPlayer) {
+                        this.beepPlayer.on('beep-endsound-played.dispatchrecorderstop', (durationMs) => {
+                            dispatchRecorderStop(durationMs);
+                        });
+                    } else {
+                        this.recorder.on('stop', (durationMs) => {
+                            dispatchRecorderStop(durationMs);
+                        });
+                    }
+
+                    this.player.on('playbackend', () => {
+                        this.$container.get(0).dispatchEvent(new CustomEvent('playback-end'));
+                    });
+                }
             },
 
             /**
              * Initialize the PCI configuration
              * @param {Object}  config
              * @param {Boolean} config.isReviewMode - Is in review mode
+             * @param {Boolean} config.isDisabled - Is currently required to appear disabled
              * @param {Boolean} config.allowPlayback - display the play button
+             * @param {Boolean} config.hideStopButton - don't display the stop button
              * @param {Boolean} config.autoStart - start recording immediately after interaction is loaded
+             * @param {Boolean} config.hideRecordButton - don't display the record button
              * @param {Boolean} config.autoPlayback - immediately playback recording after recording stops
+             * @param {Boolean} config.playSound - play beep sound when recording starts and ends
              * @param {Number}  config.delaySeconds - seconds delay before start recording
              * @param {Number}  config.delayMinutes - minutes delay before start recording
              * @param {Number}  config.maxRecords - 0 = unlimited / 1 = no retry / x = x attempts
@@ -328,13 +386,18 @@ define([
              * @param {Boolean} config.displayDownloadLink - for testing purposes only: allow to download the recorded file
              * @param {Boolean} config.updateResponsePartially - enable/disable the partial response update (may affect the performance)
              * @param {Number} config.partialUpdateInterval - number of milliseconds to wait between each recording update
+             * @param {Boolean} config.enableDomEvents - to control interaction from outside, dispatch custom events from interaction container, and react to events triggered on it
              */
             initConfig: function init(config) {
                 this.config = {
                     isReviewMode: toBoolean(config.isReviewMode, false),
+                    isDisabled: toBoolean(config.isDisabled, false),
                     allowPlayback: toBoolean(config.allowPlayback, true),
+                    hideStopButton: toBoolean(config.hideStopButton, false),
                     autoStart: toBoolean(config.autoStart, false),
+                    hideRecordButton: toBoolean(config.hideRecordButton, false),
                     autoPlayback: toBoolean(config.autoPlayback, false),
+                    playSound: toBoolean(config.playSound, false),
 
                     delaySeconds: toInteger(config.delaySeconds, 0),
                     delayMinutes: toInteger(config.delayMinutes, 0),
@@ -350,7 +413,9 @@ define([
 
                     displayDownloadLink: toBoolean(config.displayDownloadLink, false),
                     updateResponsePartially: toBoolean(config.updateResponsePartially, true),
-                    partialUpdateInterval: toInteger(config.partialUpdateInterval, 1000)
+                    partialUpdateInterval: toInteger(config.partialUpdateInterval, 1000),
+
+                    enableDomEvents: toBoolean(config.enableDomEvents, false)
                 };
             },
 
@@ -394,8 +459,23 @@ define([
                             if (self.config.autoPlayback) {
                                 self.player.on('oncanplay', function () {
                                     self.player.off('oncanplay');
-                                    self._isAutoPlayingBack = true;
-                                    self.playRecording();
+
+                                    function doPlayRecording() {
+                                        self._isAutoPlayingBack = true;
+                                        self.playRecording();
+                                        dispatchInteractiontraceEvent({
+                                            domEventType: 'play',
+                                            autostart: true
+                                        });
+                                    }
+                                    if (self.beepPlayer && self.beepPlayer.getIsPlayingEndSound()) {
+                                        self.beepPlayer.on('beep-endsound-played.autoplayback', () => {
+                                            self.beepPlayer.off('beep-endsound-played.autoplayback');
+                                            doPlayRecording();
+                                        });
+                                    } else {
+                                        doPlayRecording();
+                                    }
                                 });
                             }
                             self.player.loadFromBase64(recording.data, recording.mime);
@@ -430,6 +510,14 @@ define([
                 this.recorder.on('levelUpdate', function (level) {
                     self.inputMeter.draw(level);
                 });
+
+                this.recorder.on('stop', function (durationMs) {
+                    if (self.beepPlayer) {
+                        self.beepPlayer.playEndSound(durationMs).then(() => {
+                            self.updateControls();
+                        });
+                    }
+                });
             },
 
             /**
@@ -446,6 +534,9 @@ define([
                 });
 
                 this.player.on('playbackend', function () {
+                    dispatchInteractiontraceEvent({
+                        domEventType: 'ended'
+                    });
                     self.progressBar.setStyle('');
                     self._isAutoPlayingBack = false;
                 });
@@ -481,6 +572,15 @@ define([
                 });
             },
 
+            /**
+             * Instantiate the player that plays beep sound when recording starts and ends
+             */
+            initBeepPlayer: function initBeepPlayer() {
+                if (this.config.playSound === true && this.config.isReviewMode !== true) {
+                    this.beepPlayer = uiElements.beepPlayerFactory();
+                }
+            },
+
             initRecording: function initRecording() {
                 var delayInSeconds = this.getDelayInSeconds();
                 var self = this;
@@ -494,6 +594,10 @@ define([
                 // no delay, start recording now
                 if (delayInSeconds === 0 && !this.inQtiCreator()) {
                     this.startRecording();
+                    dispatchInteractiontraceEvent({
+                        domEventType: 'record',
+                        autostart: true
+                    });
                     return;
                 }
 
@@ -536,6 +640,11 @@ define([
 
                         self._cleanDelayCallback();
                         self.startRecording();
+                        dispatchInteractiontraceEvent({
+                            domEventType: 'record',
+                            autostart: true,
+                            delay: self.getDelayInSeconds()
+                        });
                     }, self.getDelayInSeconds() * 1000);
                 });
             },
@@ -586,19 +695,27 @@ define([
                     this.recorder
                         .init()
                         .then(function () {
-                            startForReal();
+                            return playBeepAndStartRecording();
                         })
                         .catch(function (err) {
                             // eslint-disable-next-line no-console
                             console.error(err);
                         });
                 } else {
+                    playBeepAndStartRecording();
+                }
+
+                function playBeepAndStartRecording() {
+                    if (self.beepPlayer) {
+                        return self.beepPlayer.playStartSound().then(startForReal);
+                    }
                     startForReal();
                 }
 
                 function startForReal() {
                     self.resetRecording();
                     self.recorder.start();
+                    self.$container.get(0).dispatchEvent(new CustomEvent('recorder-start'));
                     if (self.config.maxRecordingTime) {
                         self.$meterContainer.addClass('record');
                         self.progressBar.setStyle('record');
@@ -630,6 +747,7 @@ define([
              */
             setRecording: function setRecording(data) {
                 this._recording = data;
+                this.updateAriaLabel();
             },
 
             /**
@@ -644,9 +762,11 @@ define([
              * Start the playback of the recording
              */
             playRecording: function playRecording() {
-                this.player.play();
-                this.progressBar.setStyle('playback');
-                this.updateControls();
+                if (this.player) {
+                    this.player.play();
+                    this.progressBar.setStyle('playback');
+                    this.updateControls();
+                }
             },
 
             /**
@@ -664,12 +784,14 @@ define([
                 this.player.unload();
                 this.updateResponse(null);
                 this.updateControls();
+                this.updateAriaLabel();
 
                 this.progressBar.reset();
                 this.$meterContainer.removeClass('record');
                 if (this.recorder.is('recording')) {
                     this.recorder.cancel();
                 }
+                this.$container.get(0).dispatchEvent(new CustomEvent('recorder-reset'));
             },
 
             /**
@@ -717,7 +839,8 @@ define([
              */
             updateResetCount: function updateResetCount() {
                 var remaining = this.config.maxRecords - this._recordsAttempts - 1,
-                    resetLabel = resetIcon;
+                    resetLabel = deleteIcon,
+                    canRecordAgain;
 
                 if (this.config.maxRecords > 1) {
                     resetLabel += ' (' + remaining + ')';
@@ -725,6 +848,9 @@ define([
                 if (this.controls.reset) {
                     this.controls.reset.updateLabel(resetLabel);
                 }
+                // reflect can-record-again state in the DOM
+                canRecordAgain = this.config.maxRecords === 0 || remaining >= 0;
+                this.$container.find('.audio-rec').attr('data-disabled', !canRecordAgain);
             },
 
             /**
@@ -768,10 +894,11 @@ define([
                     reset;
 
                 this.$controlsContainer.empty();
+                this.$controlsContainer.attr('role', 'group');
                 this.controls = {};
 
-                if (this.config.isReviewMode !== true) {
-                    // Record button
+                // Record button
+                if (this.config.hideRecordButton !== true && this.config.isReviewMode !== true) {
                     record = uiElements.controlFactory({
                         id: 'record',
                         label: recordIcon,
@@ -782,13 +909,17 @@ define([
                         function () {
                             if (this.is('enabled')) {
                                 self.startRecording();
+                                dispatchInteractiontraceEvent({
+                                    domEventType: 'record',
+                                    target: record.getDOMElement()
+                                });
                             }
                         }.bind(record)
                     );
                     record.on(
                         'updatestate',
                         function () {
-                            if (self.player.is('created') && !self.recorder.is('recording') && !self.getRecording()) {
+                            if (self.player.is('created') && !self.recorder.is('recording') && !self.getRecording() && !self.config.isDisabled) {
                                 this.enable();
                             } else {
                                 this.disable();
@@ -799,34 +930,47 @@ define([
                 }
 
                 // Stop button
-                stop = uiElements.controlFactory({
-                    id: 'stop',
-                    label: stopIcon,
-                    container: this.$controlsContainer
-                });
-                stop.on(
-                    'click',
-                    function () {
-                        if (this.is('enabled')) {
-                            if (self.recorder.is('recording')) {
-                                self.stopRecording();
-                            } else if (self.player.is('playing')) {
-                                self.stopPlayback();
+                if (this.config.hideStopButton !== true || this.config.isReviewMode === true) {
+                    stop = uiElements.controlFactory({
+                        id: 'stop',
+                        label: stopIcon,
+                        container: this.$controlsContainer
+                    });
+                    stop.on(
+                        'click',
+                        function () {
+                            if (this.is('enabled')) {
+                                if (self.recorder.is('recording')) {
+                                    self.stopRecording();
+                                    dispatchInteractiontraceEvent({
+                                        domEventType: 'stop',
+                                        target: stop.getDOMElement()
+                                    });
+                                } else if (self.player.is('playing')) {
+                                    self.stopPlayback();
+                                    dispatchInteractiontraceEvent({
+                                        domEventType: 'stop',
+                                        target: stop.getDOMElement()
+                                    });
+                                }
                             }
-                        }
-                    }.bind(stop)
-                );
-                stop.on(
-                    'updatestate',
-                    function () {
-                        if ((self.player.is('playing') && !self._isAutoPlayingBack) || self.recorder.is('recording')) {
-                            this.enable();
-                        } else {
-                            this.disable();
-                        }
-                    }.bind(stop)
-                );
-                this.controls.stop = stop;
+                        }.bind(stop)
+                    );
+                    stop.on(
+                        'updatestate',
+                        function () {
+                            if (
+                                (self.player.is('playing') && !self._isAutoPlayingBack && !self.config.isDisabled) ||
+                                self.recorder.is('recording')
+                            ) {
+                                this.enable();
+                            } else {
+                                this.disable();
+                            }
+                        }.bind(stop)
+                    );
+                    this.controls.stop = stop;
+                }
 
                 // Play button
                 if (this.config.allowPlayback === true || this.config.isReviewMode === true) {
@@ -840,13 +984,21 @@ define([
                         function () {
                             if (this.is('enabled')) {
                                 self.playRecording();
+                                dispatchInteractiontraceEvent({
+                                    domEventType: 'play',
+                                    target: play.getDOMElement()
+                                });
                             }
                         }.bind(play)
                     );
                     play.on(
                         'updatestate',
                         function () {
-                            if (self.player.is('idle') || (self.getRecording() && !self._isAutoPlayingBack)) {
+                            if (
+                                (self.player.is('idle') || (self.getRecording() && !self._isAutoPlayingBack)) &&
+                                !(self.beepPlayer && self.beepPlayer.getIsPlayingEndSound()) &&
+                                !self.config.isDisabled
+                            ) {
                                 this.enable();
                             } else {
                                 this.disable();
@@ -860,7 +1012,7 @@ define([
                 if (this.config.maxRecords !== 1 && this.config.isReviewMode !== true) {
                     reset = uiElements.controlFactory({
                         id: 'reset',
-                        label: resetIcon,
+                        label: deleteIcon,
                         container: this.$controlsContainer
                     });
                     reset.on(
@@ -869,6 +1021,18 @@ define([
                             if (this.is('enabled')) {
                                 self.resetRecording();
                                 self.updateResetCount();
+                                dispatchInteractiontraceEvent({
+                                    domEventType: 'reset',
+                                    target: reset.getDOMElement()
+                                });
+
+                                if (self.config.hideRecordButton === true) {
+                                    self.startRecording();
+                                    dispatchInteractiontraceEvent({
+                                        domEventType: 'record',
+                                        autostart: true
+                                    });
+                                }
                             }
                         }.bind(reset)
                     );
@@ -877,7 +1041,11 @@ define([
                         function () {
                             if (self.config.maxRecords > 1 && self.config.maxRecords === self._recordsAttempts) {
                                 this.disable();
-                            } else if (self.player.is('idle')) {
+                            } else if (
+                                self.player.is('idle') &&
+                                !(self.beepPlayer && self.beepPlayer.getIsPlayingEndSound()) &&
+                                !self.config.isDisabled
+                            ) {
                                 this.enable();
                             } else {
                                 this.disable();
@@ -913,6 +1081,14 @@ define([
                     self.controls[id].destroy();
                 });
                 this.controls = null;
+            },
+
+            /**
+             * Update the aria-label of the interaction
+             */
+            updateAriaLabel: function updateAriaLabel() {
+                const label = this.getRecording() ? 'Audio recording interaction, with a recording' : 'Audio recording interaction, no recording';
+                this.$container.find('.audio-rec').attr('role', 'region').attr('aria-label', label);
             }
         };
     };
@@ -931,9 +1107,17 @@ define([
          * @param {Object} [state] - the json serialized state object, returned by previous call to getStatus(), use to initialize an
          */
         getInstance: function getInstance(dom, config, state) {
+            const dispatchInteractiontraceEvent = detail => {
+                const interactiontraceEvent = new CustomEvent('interactiontrace', {
+                    detail,
+                    bubbles: true
+                });
+                dom.dispatchEvent(interactiontraceEvent);
+            };
+
             var response = config.boundTo;
             var responseIdentifier = Object.keys(response)[0];
-            var audioRecordingInteraction = audioRecordingInteractionFactory();
+            var audioRecordingInteraction = audioRecordingInteractionFactory(dispatchInteractiontraceEvent);
             // config.properties.media is serialized string
             // because in tao-item-runner-qti-fe/src/qtiCommonRenderer/renderers/interactions/pci/ims.js:82
             // property value is serialize if it is array or object
@@ -941,12 +1125,7 @@ define([
                 config.properties.media = JSON.parse(config.properties.media);
             }
             //simply mapped to existing TAO PCI API
-            audioRecordingInteraction.initialize(
-                responseIdentifier,
-                dom,
-                config.properties,
-                config.assetManager
-            );
+            audioRecordingInteraction.initialize(responseIdentifier, dom, config.properties, config.assetManager);
             audioRecordingInteraction.setResponse(response[responseIdentifier]);
             audioRecordingInteraction.setSerializedState(state);
 

@@ -13,7 +13,7 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  *
- * Copyright (c) 2016-2017 (original work) Open Assessment Technologies SA;
+ * Copyright (c) 2016-2022 (original work) Open Assessment Technologies SA;
  */
 
 define([
@@ -25,8 +25,9 @@ define([
     'taoQtiItem/qtiCreator/editor/simpleContentEditableElement',
     'taoQtiItem/qtiCreator/editor/containerEditor',
     'tpl!mathEntryInteraction/creator/tpl/propertiesForm',
-    'tpl!mathEntryInteraction/creator/tpl/addGapBtn'
-], function($, __, stateFactory, Question, formElement, simpleEditor, containerEditor, formTpl, addGapBtnTpl){
+    'tpl!mathEntryInteraction/creator/tpl/addGapBtn',
+    'mathEntryInteraction/runtime/helper/mathInPrompt'
+], function($, __, stateFactory, Question, formElement, simpleEditor, containerEditor, formTpl, addGapBtnTpl, mathInPrompt){
     'use strict';
 
     var $addGapBtn = $(addGapBtnTpl());
@@ -40,6 +41,10 @@ define([
             change : function(text){
                 interaction.data('prompt', text);
                 interaction.updateMarkup();
+
+                if (!$prompt.is('[data-html-editable-container="true"]')) {
+                    mathInPrompt.postRender($prompt);
+                }
             },
             markup : interaction.markup,
             markupSelector : '.prompt',
@@ -105,12 +110,16 @@ define([
             tool_exp:       toBoolean(interaction.prop('tool_exp'),     true),
             tool_log:       toBoolean(interaction.prop('tool_log'),     true),
             tool_ln:        toBoolean(interaction.prop('tool_ln'),      true),
+            tool_limit:     toBoolean(interaction.prop('tool_limit'),   true),
+            tool_sum:       toBoolean(interaction.prop('tool_sum'),     true),
+            tool_nthroot:   toBoolean(interaction.prop('tool_nthroot'), true),
             tool_e:         toBoolean(interaction.prop('tool_e'),       true),
             tool_infinity:  toBoolean(interaction.prop('tool_infinity'),true),
             squarebkts:     toBoolean(interaction.prop('tool_rbrack'),  true) && toBoolean(interaction.prop('tool_lbrack'), true),
             tool_pi:        toBoolean(interaction.prop('tool_pi'),      true),
             tool_cos:       toBoolean(interaction.prop('tool_cos'),     true),
             tool_sin:       toBoolean(interaction.prop('tool_sin'),     true),
+            tool_tan:       toBoolean(interaction.prop('tan'),          true),
             tool_lte:       toBoolean(interaction.prop('tool_lte'),     true),
             tool_gte:       toBoolean(interaction.prop('tool_gte'),     true),
             tool_times:     toBoolean(interaction.prop('tool_times'),   true),
@@ -135,6 +144,18 @@ define([
             tool_ninmem:    toBoolean(interaction.prop('tool_ninmem'),  true),
             tool_union:     toBoolean(interaction.prop('tool_union'),   true),
             tool_intersec:  toBoolean(interaction.prop('tool_intersec'),true),
+            tool_colon:     toBoolean(interaction.prop('tool_colon'),   true),
+            tool_to:        toBoolean(interaction.prop('tool_to'),      true),
+            tool_congruent: toBoolean(interaction.prop('tool_congruent'),   true),
+            tool_subset: toBoolean(interaction.prop('tool_subset'),     true),
+            tool_superset: toBoolean(interaction.prop('tool_superset'), true),
+            tool_contains: toBoolean(interaction.prop('tool_contains'), true),
+            tool_approx:    toBoolean(interaction.prop('tool_approx'),  true),
+            tool_vline:     toBoolean(interaction.prop('tool_vline'),   true),
+            tool_degree:    toBoolean(interaction.prop('tool_degree'),  true),
+            tool_percent:    toBoolean(interaction.prop('tool_percent'),  true),
+            tool_matrix_2row:   toBoolean(interaction.prop('tool_matrix_2row'),        true),
+            tool_matrix_2row_2col:   toBoolean(interaction.prop('tool_matrix_2row_2col'),        true),
             allowNewLine:   toBoolean(interaction.prop('allowNewLine'), false),
             enableAutoWrap: toBoolean(interaction.prop('enableAutoWrap'), false)
         }));
@@ -142,9 +163,9 @@ define([
         //init form javascript
         formElement.initWidget($form);
 
-            //init data change callbacks
-            formElement.setChangeCallbacks($form, interaction, {
-                identifier: function(i, value){
+        //init data change callbacks
+        formElement.setChangeCallbacks($form, interaction, {
+            identifier: function(i, value){
                 response.id(value);
                 interaction.attr('responseIdentifier', value);
             },
@@ -152,10 +173,12 @@ define([
                 if (toBoolean(value, false)) {
                     self.createAddGapBtn();
                     $gapStyleBox.show();
+                    response.removeMapEntries();
                 } else {
                     i.prop('gapExpression', '');
                     self.removeAddGapBtn();
                     $gapStyleBox.hide();
+                    response.removeMapEntries();
                 }
 
                 response.attr('cardinality', 'single');
@@ -175,11 +198,15 @@ define([
             tool_exp:       configChangeCallBack,
             tool_log:       configChangeCallBack,
             tool_ln:        configChangeCallBack,
+            tool_limit:     configChangeCallBack,
+            tool_sum:       configChangeCallBack,
+            tool_nthroot:   configChangeCallBack,
             tool_e:         configChangeCallBack,
             tool_infinity:  configChangeCallBack,
             tool_pi:        configChangeCallBack,
             tool_cos:       configChangeCallBack,
             tool_sin:       configChangeCallBack,
+            tool_tan:       configChangeCallBack,
             tool_lte:       configChangeCallBack,
             tool_gte:       configChangeCallBack,
             tool_times:     configChangeCallBack,
@@ -202,6 +229,18 @@ define([
             tool_ninmem:    configChangeCallBack,
             tool_union:     configChangeCallBack,
             tool_intersec:  configChangeCallBack,
+            tool_colon:     configChangeCallBack,
+            tool_to:     configChangeCallBack,
+            tool_congruent: configChangeCallBack,
+            tool_subset:    configChangeCallBack,
+            tool_superset:    configChangeCallBack,
+            tool_contains:    configChangeCallBack,
+            tool_approx:    configChangeCallBack,
+            tool_vline:     configChangeCallBack,
+            tool_degree:    configChangeCallBack,
+            tool_percent:    configChangeCallBack,
+            tool_matrix_2row:    configChangeCallBack,
+            tool_matrix_2row_2col:    configChangeCallBack,
 
             squarebkts: function squarebktsChangeCallBack(i, value) {
                 i.prop('tool_lbrack', value);
@@ -243,7 +282,7 @@ define([
         var _widget = this.widget,
             interaction = _widget.element;
 
-        interaction.onPci('responseChange', function(latex) {
+        interaction.onPci('responseChange', function (latex) {
             if (toBoolean(interaction.prop('useGapExpression'), false)) {
                 interaction.prop('gapExpression', latex);
             } else {

@@ -24,6 +24,7 @@ use oat\qtiItemPci\scripts\install\RegisterClientProvider;
 use oat\qtiItemPci\scripts\install\RegisterIMSPciAudioRecording;
 use oat\qtiItemPci\scripts\install\RegisterPciFilesystem;
 use oat\qtiItemPci\scripts\install\RegisterPciLikertScale;
+use oat\qtiItemPci\scripts\install\RegisterPciLikertScore;
 use oat\qtiItemPci\scripts\install\RegisterPciLiquid;
 use oat\qtiItemPci\scripts\install\RegisterPciMathEntry;
 use oat\qtiItemPci\scripts\install\RegisterPciModel;
@@ -39,17 +40,100 @@ return [
     'license' => 'GPL-2.0',
     'author' => 'Open Assessment Technologies SA',
     'acl' => [
-        ['grant', 'http://www.tao.lu/Ontologies/generis.rdf#qtiItemPciManager', ['ext' => 'qtiItemPci']],
-        ['grant', 'http://www.tao.lu/Ontologies/TAOItem.rdf#QTIManagerRole', ['ext' => 'qtiItemPci', 'mod' => 'PciLoader']],
-        ['grant', 'http://www.tao.lu/Ontologies/TAOItem.rdf#ItemsManagerRole', ['ext' => 'qtiItemPci', 'mod' => 'PciLoader']],
-        ['grant', 'http://www.tao.lu/Ontologies/TAO.rdf#DeliveryRole', ['ext' => 'qtiItemPci', 'mod' => 'PciLoader']],
-        ['grant', 'http://www.tao.lu/Ontologies/generis.rdf#qtiItemPciManager', ['ext' => 'qtiItemPci', 'mod' => 'PciManager', 'act' => 'unregister']],
-        ['grant', 'http://www.tao.lu/Ontologies/generis.rdf#qtiItemPciManager', ['ext' => 'qtiItemPci', 'mod' => 'PciManager', 'act' => 'enable']],
-        ['grant', 'http://www.tao.lu/Ontologies/generis.rdf#qtiItemPciManager', ['ext' => 'qtiItemPci', 'mod' => 'PciManager', 'act' => 'disable']],
-        ['grant', 'http://www.tao.lu/Ontologies/generis.rdf#qtiItemPciManager', ['ext' => 'qtiItemPci', 'mod' => 'PciManager', 'act' => 'export']],
-        ['grant', 'http://www.tao.lu/Ontologies/generis.rdf#qtiItemPciManager', ['ext' => 'qtiItemPci', 'mod' => 'PciManager', 'act' => 'import']],
-        ['grant', 'http://www.tao.lu/Ontologies/generis.rdf#qtiItemPciManager', ['ext' => 'qtiItemPci', 'mod' => 'PciManager', 'act' => 'index']],
-        ['grant', TaoItemsRoles::ITEM_CONTENT_CREATOR, ['ext' => 'qtiItemPci', 'mod' => 'PciLoader', 'act' => 'load']],
+        [
+            'grant',
+            'http://www.tao.lu/Ontologies/generis.rdf#qtiItemPciManager',
+            [
+                'ext' => 'qtiItemPci',
+            ],
+        ],
+        [
+            'grant',
+            'http://www.tao.lu/Ontologies/TAOItem.rdf#QTIManagerRole',
+            [
+                'ext' => 'qtiItemPci',
+                'mod' => 'PciLoader',
+            ],
+        ],
+        [
+            'grant',
+            'http://www.tao.lu/Ontologies/TAOItem.rdf#ItemsManagerRole',
+            [
+                'ext' => 'qtiItemPci',
+                'mod' => 'PciLoader',
+            ],
+        ],
+        [
+            'grant',
+            'http://www.tao.lu/Ontologies/TAO.rdf#DeliveryRole',
+            [
+                'ext' => 'qtiItemPci',
+                'mod' => 'PciLoader',
+            ],
+        ],
+        [
+            'grant',
+            'http://www.tao.lu/Ontologies/generis.rdf#qtiItemPciManager',
+            [
+                'ext' => 'qtiItemPci',
+                'mod' => 'PciManager',
+                'act' => 'unregister',
+            ],
+        ],
+        [
+            'grant',
+            'http://www.tao.lu/Ontologies/generis.rdf#qtiItemPciManager',
+            [
+                'ext' => 'qtiItemPci',
+                'mod' => 'PciManager',
+                'act' => 'enable',
+            ],
+        ],
+        [
+            'grant',
+            'http://www.tao.lu/Ontologies/generis.rdf#qtiItemPciManager',
+            [
+                'ext' => 'qtiItemPci',
+                'mod' => 'PciManager',
+                'act' => 'disable',
+            ],
+        ],
+        [
+            'grant',
+            'http://www.tao.lu/Ontologies/generis.rdf#qtiItemPciManager',
+            [
+                'ext' => 'qtiItemPci',
+                'mod' => 'PciManager',
+                'act' => 'export',
+            ],
+        ],
+        [
+            'grant',
+            'http://www.tao.lu/Ontologies/generis.rdf#qtiItemPciManager',
+            [
+                'ext' => 'qtiItemPci',
+                'mod' => 'PciManager',
+                'act' => 'import',
+            ],
+        ],
+        [
+            'grant',
+            'http://www.tao.lu/Ontologies/generis.rdf#qtiItemPciManager',
+            [
+                'ext' => 'qtiItemPci',
+                'mod' => 'PciManager',
+                'act' => 'index',
+            ],
+        ],
+        [
+            'grant',
+            TaoItemsRoles::ITEM_CONTENT_CREATOR,
+            [
+                'ext' => 'qtiItemPci',
+                'mod' => 'PciLoader',
+                'act' => 'load',
+            ],
+        ],
     ],
     'install' => [
         'rdf' => [
@@ -63,6 +147,7 @@ return [
             RegisterClientProvider::class,
             RegisterPciLiquid::class,
             RegisterPciLikertScale::class,
+            RegisterPciLikertScore::class,
             RegisterPciMathEntry::class,
             SetupAudioRecordingInteractionCreatorConfigurationRegistry::class,
             RegisterIMSPciAudioRecording::class
